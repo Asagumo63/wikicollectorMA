@@ -18,6 +18,7 @@ Parameters:
     Default: ""
   WebDomainHostedZoneId:
     Type: String
+    Default: ""
     Description: require if set WebDomainName
 
 Conditions:
