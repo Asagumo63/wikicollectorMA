@@ -49,6 +49,7 @@ USER_POOL_ID=$(echo ${BACKEND_OUTPUTS} | jq -r '.[] | select(.OutputKey=="UserPo
 USER_POOL_CLIENT_ID=$(echo ${BACKEND_OUTPUTS} | jq -r '.[] | select(.OutputKey=="UserPoolClientId") | .OutputValue')
 IDENTITY_POOL_ID=$(echo ${BACKEND_OUTPUTS} | jq -r '.[] | select(.OutputKey=="IdentityPoolId") | .OutputValue')
 MEDIA_BUCKET_NAME=$(echo ${BACKEND_OUTPUTS} | jq -r '.[] | select(.OutputKey=="WikiImageBucketName") | .OutputValue')
+OBJECT_BUCKET_NAME=$(echo ${BACKEND_OUTPUTS} | jq -r '.[] | select(.OutputKey=="ObjectBucketName") | .OutputValue')
 
 # 4. フロントエンド インフラのデプロイ (CloudFront + S3)
 echo "[3/5] Deploying Frontend Infrastructure (CloudFormation)..."
@@ -85,16 +86,13 @@ fi
 # 5. フロントエンドのビルド
 echo "[4/5] Building Frontend (React)..."
 cat <<EOF > wikicollector-frontend/.env
-VITE_AWS_PROJECT_REGION=${REGION}
-VITE_AWS_APPSYNC_GRAPHQL_ENDPOINT=${API_URL}
-VITE_AWS_APPSYNC_REGION=${REGION}
-VITE_AWS_APPSYNC_AUTHENTICATION_TYPE=AMAZON_COGNITO_USER_POOLS
-VITE_AWS_COGNITO_REGION=${REGION}
-VITE_AWS_COGNITO_USER_POOL_ID=${USER_POOL_ID}
-VITE_AWS_COGNITO_USER_POOL_WEB_CLIENT_ID=${USER_POOL_CLIENT_ID}
-VITE_AWS_COGNITO_IDENTITY_POOL_ID=${IDENTITY_POOL_ID}
-VITE_AWS_USER_FILES_S3_BUCKET=${MEDIA_BUCKET_NAME}
-VITE_AWS_USER_FILES_S3_BUCKET_REGION=${REGION}
+VITE_AWSREGION=${REGION}
+VITE_GRAPHQLENDPOINT=${API_URL}
+VITE_USERPOOLID=${USER_POOL_ID}
+VITE_USERPOOLWEBCLIENTID=${USER_POOL_CLIENT_ID}
+VITE_IDENTITYPOOLID=${IDENTITY_POOL_ID}
+VITE_WIKI_IMAGE_BUCKET_NAME=${MEDIA_BUCKET_NAME}
+VITE_OBJECT_BUCKET_NAME=${OBJECT_BUCKET_NAME}
 EOF
 
 cd wikicollector-frontend
