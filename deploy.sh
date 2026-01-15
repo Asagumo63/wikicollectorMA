@@ -44,9 +44,9 @@ if [ -z "$BACKEND_OUTPUTS" ] || [ "$BACKEND_OUTPUTS" == "null" ]; then
     exit 1
 fi
 
-API_URL=$(echo ${BACKEND_OUTPUTS} | jq -r '.[] | select(.OutputKey=="GraphQLAPIURL") | .OutputValue')
+API_URL=$(echo ${BACKEND_OUTPUTS} | jq -r '.[] | select(.OutputKey=="GraphQLApiUrl") | .OutputValue')
 USER_POOL_ID=$(echo ${BACKEND_OUTPUTS} | jq -r '.[] | select(.OutputKey=="UserPoolId") | .OutputValue')
-USER_POOL_CLIENT_ID=$(echo ${BACKEND_OUTPUTS} | jq -r '.[] | select(.OutputKey=="UserPoolClientId") | .OutputValue')
+USER_POOL_CLIENT_ID=$(echo ${BACKEND_OUTPUTS} | jq -r '.[] | select(.OutputKey=="UserPoolWebClientId") | .OutputValue')
 IDENTITY_POOL_ID=$(echo ${BACKEND_OUTPUTS} | jq -r '.[] | select(.OutputKey=="IdentityPoolId") | .OutputValue')
 MEDIA_BUCKET_NAME=$(echo ${BACKEND_OUTPUTS} | jq -r '.[] | select(.OutputKey=="WikiImageBucketName") | .OutputValue')
 OBJECT_BUCKET_NAME=$(echo ${BACKEND_OUTPUTS} | jq -r '.[] | select(.OutputKey=="ObjectBucketName") | .OutputValue')
