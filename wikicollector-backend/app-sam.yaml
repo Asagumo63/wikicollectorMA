@@ -619,6 +619,13 @@ Resources:
       UserPoolName: !Sub "${AWS::StackName}UserPool"
       UsernameAttributes:
         - email
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
       Policies:
         PasswordPolicy:
           MinimumLength: 6
