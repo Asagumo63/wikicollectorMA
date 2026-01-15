@@ -617,6 +617,8 @@ Resources:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: !Sub "${AWS::StackName}UserPool"
+      AliasAttributes:
+        - email
       Policies:
         PasswordPolicy:
           MinimumLength: 6
