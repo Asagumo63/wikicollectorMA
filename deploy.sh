@@ -86,6 +86,12 @@ fi
 
 # 5. フロントエンドのビルド
 echo "[4/5] Building Frontend (React)..."
+
+# 古いビルド成果物とキャッシュを削除して確実にクリーンビルド
+rm -f wikicollector-frontend/.env
+rm -rf wikicollector-frontend/dist
+rm -rf wikicollector-frontend/node_modules/.vite
+
 cat <<EOF > wikicollector-frontend/.env
 VITE_AWSREGION=${REGION}
 VITE_GRAPHQLENDPOINT=${API_URL}
@@ -96,10 +102,14 @@ VITE_WIKI_IMAGE_BUCKET_NAME=${MEDIA_BUCKET_NAME}
 VITE_OBJECT_BUCKET_NAME=${OBJECT_BUCKET_NAME}
 EOF
 
+echo "Generated .env:"
+cat wikicollector-frontend/.env
+
 cd wikicollector-frontend
 yarn install
 yarn build
 cd ..
+
 
 # 6. フロントエンドファイルのアップロードとキャッシュ無効化
 echo "[5/5] Uploading assets to S3 and invalidating CloudFront..."
