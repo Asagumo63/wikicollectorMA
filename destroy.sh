@@ -15,6 +15,8 @@ echo "--------------------------------------------------"
 
 # 2. Pythonスクリプトでバケットを強力に削除
 echo "Running robust bucket cleanup..."
+# スタックからの自動検出に加え、明示的に取得したバケット名も渡す
+python3 cleanup_buckets.py --buckets "${MEDIA_BUCKET}" "${WEB_BUCKET}" "${LOG_BUCKET}"
 python3 cleanup_buckets.py ${BACKEND_STACK_NAME} ${FRONTEND_STACK_NAME}
 
 # 4. スタックの削除

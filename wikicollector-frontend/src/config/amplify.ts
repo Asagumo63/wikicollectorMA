@@ -9,7 +9,7 @@ export const amplifyConfig: ResourcesConfig = {
       identityPoolId: import.meta.env.VITE_IDENTITYPOOLID || '',
       loginWith: {
         username: true,
-        email: true,
+        email: false,
       },
       signUpVerificationMethod: 'code',
       userAttributes: {
