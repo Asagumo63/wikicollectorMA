@@ -24,18 +24,18 @@ LOG_BUCKET=$(aws cloudformation describe-stack-resource --stack-name ${FRONTEND_
 
 # 3. S3バケットの中身を空にする (CloudFormation削除でエラーにならないように)
 if [ ! -z "$MEDIA_BUCKET" ] && [ "$MEDIA_BUCKET" != "null" ]; then
-    echo "Emptying Media Bucket: ${MEDIA_BUCKET}..."
-    aws s3 rm s3://${MEDIA_BUCKET} --recursive
+    echo "Force deleting Media Bucket: ${MEDIA_BUCKET}..."
+    aws s3 rb s3://${MEDIA_BUCKET} --force
 fi
 
 if [ ! -z "$WEB_BUCKET" ] && [ "$WEB_BUCKET" != "null" ]; then
-    echo "Emptying Web Bucket: ${WEB_BUCKET}..."
-    aws s3 rm s3://${WEB_BUCKET} --recursive
+    echo "Force deleting Web Bucket: ${WEB_BUCKET}..."
+    aws s3 rb s3://${WEB_BUCKET} --force
 fi
 
 if [ ! -z "$LOG_BUCKET" ] && [ "$LOG_BUCKET" != "null" ]; then
-    echo "Emptying Log Bucket: ${LOG_BUCKET}..."
-    aws s3 rm s3://${LOG_BUCKET} --recursive
+    echo "Force deleting Log Bucket: ${LOG_BUCKET}..."
+    aws s3 rb s3://${LOG_BUCKET} --force
 fi
 
 # 4. スタックの削除
