@@ -65,7 +65,8 @@ aws cloudformation deploy \
     --template-file $TEMPLATE_FILE \
     --stack-name ${FRONTEND_STACK_NAME} \
     --parameter-overrides ComponentName=${COMPONENT_NAME} EnvironmentName=${ENV_NAME} \
-    --capabilities CAPABILITY_IAM
+    --capabilities CAPABILITY_IAM \
+    --no-fail-on-empty-changeset
 
 FRONTEND_OUTPUTS=$(aws cloudformation describe-stacks --stack-name ${FRONTEND_STACK_NAME} --query "Stacks[0].Outputs")
 
