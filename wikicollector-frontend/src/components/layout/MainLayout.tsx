@@ -244,7 +244,7 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
           {auth.user && (
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <Typography variant="body2" sx={{ mr: 2, display: { xs: 'none', sm: 'block' } }}>
-                ログイン中: {auth.user.username || auth.user.attributes?.email}
+                ログイン中: {auth.user.username || (auth.user.attributes?.email as string) || ''}
               </Typography>
               <IconButton
                 color="inherit"
