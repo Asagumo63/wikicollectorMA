@@ -1,3 +1,4 @@
+import { Amplify } from 'aws-amplify';
 import type { ResourcesConfig } from 'aws-amplify';
 
 export const amplifyConfig: ResourcesConfig = {
@@ -45,3 +46,5 @@ export const amplifyConfig: ResourcesConfig = {
     },
   },
 };
+
+Amplify.configure(amplifyConfig);
