@@ -30,8 +30,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate } from 'react-router-dom';
-import { useAuthenticator } from '@aws-amplify/ui-react';
-import { fetchUserAttributes } from 'aws-amplify/auth';
+import { AuthService } from '../../services/authService';
 
 const drawerWidthDefault = 300;
 const minDrawerWidth = 200;
@@ -40,7 +39,6 @@ const maxDrawerWidth = 600;
 export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const setArticles = useSetAtom(articlesAtom);
   const [auth, setAuth] = useAtom(authAtom);
-  const { user, signOut: amplifySignOut } = useAuthenticator((context: any) => [context.user]);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -54,40 +52,6 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
   const [quickMemoOpen, setQuickMemoOpen] = useAtom(quickMemoOpenAtom);
   const [memoText, setMemoText] = useState('');
   const [isSavingMemo, setIsSavingMemo] = useState(false);
-
-  const [displayName, setDisplayName] = useState<string>('');
-
-  // Amplify の認証状態を authAtom に同期
-  useEffect(() => {
-    if (user) {
-      setAuth({
-        user: {
-          username: user.username,
-          attributes: {}
-        },
-        isAuthenticated: true,
-        isLoading: false,
-      });
-
-      // 表示名を取得
-      const getDisplayName = async () => {
-        try {
-          const attributes = await fetchUserAttributes();
-          setDisplayName(attributes.preferred_username || user.username);
-        } catch (e) {
-          console.error('Failed to fetch user attributes:', e);
-          setDisplayName(user.username);
-        }
-      };
-      getDisplayName();
-    } else {
-      setAuth({
-        user: null,
-        isAuthenticated: false,
-        isLoading: false,
-      });
-    }
-  }, [user, setAuth]);
 
   // 画面サイズが変わったときにサイドバーの状態とスワイプエリアを調整
   useEffect(() => {
@@ -119,7 +83,12 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
   }, [setArticles, auth.isAuthenticated]);
 
   const handleLogout = async () => {
-    amplifySignOut();
+    await AuthService.signOut();
+    setAuth({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+    });
     navigate('/');
   };
 
@@ -275,7 +244,7 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
           {auth.user && (
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <Typography variant="body2" sx={{ mr: 2, display: { xs: 'none', sm: 'block' } }}>
-                ログイン中: {displayName}
+                ログイン中: {auth.user.username || auth.user.attributes?.email}
               </Typography>
               <IconButton
                 color="inherit"
