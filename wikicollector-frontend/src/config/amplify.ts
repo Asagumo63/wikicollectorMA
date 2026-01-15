@@ -1,4 +1,3 @@
-import { Amplify } from 'aws-amplify';
 import type { ResourcesConfig } from 'aws-amplify';
 
 export const amplifyConfig: ResourcesConfig = {
@@ -9,7 +8,7 @@ export const amplifyConfig: ResourcesConfig = {
       identityPoolId: import.meta.env.VITE_IDENTITYPOOLID || '',
       loginWith: {
         username: true,
-        email: false,
+        email: true,
       },
       signUpVerificationMethod: 'code',
       userAttributes: {
@@ -46,5 +45,3 @@ export const amplifyConfig: ResourcesConfig = {
     },
   },
 };
-
-Amplify.configure(amplifyConfig);
