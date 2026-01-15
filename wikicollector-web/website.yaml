@@ -1,0 +1,195 @@
+# CloudFront関連
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  EnvironmentName: # 環境名
+    Type: String
+    MinLength: 1
+    Description: Stage that can be added to resource names
+  ComponentName: # コンポーネント名
+    Type: String
+    MinLength: 1
+  WebDomainName: # Webドメイン
+    Type: String
+    Description: Set CNAME if you need.
+    Default: ""
+  WebCertificateArn:
+    Type: String
+    Default: ""
+  WebDomainHostedZoneId:
+    Type: String
+    Description: require if set WebDomainName
+
+Conditions:
+  # WebDomainNameなどが設定されているか
+  IsSetWebDomainName:
+    Fn::And:
+      - Fn::Not:
+          - Fn::Equals:
+            - Ref: WebDomainName
+            - ""
+      - Fn::Not:
+          - Fn::Equals:
+            - Ref: WebCertificateArn
+            - ""
+      - Fn::Not:
+          - Fn::Equals:
+            - Ref: WebDomainHostedZoneId
+            - ""
+
+Resources:
+  # ログ出力先となるBucket
+  LogBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldLogs
+            Status: Enabled
+            ExpirationInDays: 90
+            NoncurrentVersionExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: true
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: true
+
+  # OriginとなるBucket
+  ContentsBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # S3 OriginのBucketPolicy
+  ContentsBucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket:
+        Ref: ContentsBucket
+      PolicyDocument:
+        Statement:
+          - Action: "s3:GetObject"
+            Effect: Allow
+            Resource: !Sub "arn:aws:s3:::${ContentsBucket}/*"
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudfrontDistribution}"
+
+  # Origin Access Control (OAC)
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-OAC"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # Distribution
+  CloudfrontDistribution:
+    Type: "AWS::CloudFront::Distribution"
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Aliases:
+          - Fn::If:
+            - IsSetWebDomainName
+            - !Ref WebDomainName
+            - !Ref AWS::NoValue
+        DefaultRootObject: "index.html"
+        Origins:
+          - Id: S3Origin
+            DomainName: !Sub "${ContentsBucket}.s3.${AWS::Region}.amazonaws.com"
+            S3OriginConfig: {}
+            OriginAccessControlId: !Ref OriginAccessControl
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          ViewerProtocolPolicy: "https-only"
+          Compress: true
+        PriceClass: PriceClass_200
+        Comment: !Sub "${AWS::StackName}"
+        Logging:
+          Bucket: !GetAtt LogBucket.DomainName
+          Prefix: "cf-logs"
+        ViewerCertificate:
+          Fn::If:
+            - IsSetWebDomainName
+            - AcmCertificateArn: !Ref WebCertificateArn
+              SslSupportMethod: sni-only
+            - !Ref AWS::NoValue
+        CacheBehaviors:
+          - PathPattern: index.html
+            TargetOriginId: S3Origin
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # ← CachingDisabled
+            ViewerProtocolPolicy: "https-only"
+            Compress: true
+
+        CustomErrorResponses:
+          # SPA対応: すべてのパスでindex.htmlを返す
+          - ErrorCachingMinTTL: 0
+            ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: "/index.html"
+          - ErrorCachingMinTTL: 0
+            ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: "/index.html"
+
+  DNSRecordSet:
+    Condition: IsSetWebDomainName # WebDomainNameが存在するときだけ作成
+    Type: AWS::Route53::RecordSet
+    Properties:
+      AliasTarget:
+        DNSName:
+          Fn::Sub:
+            - "${_distributiondns}."
+            - _distributiondns:
+                Fn::GetAtt:
+                  - CloudfrontDistribution
+                  - DomainName
+        # CloudFrontのWebDomainHostedZoneIdは固定
+        HostedZoneId: Z2FDTNDATAQYW2
+      Type: A
+      Name: !Sub "${WebDomainName}."
+      HostedZoneId: !Ref WebDomainHostedZoneId
+
+Outputs:
+  Site:
+    Value:
+      Fn::Sub:
+        - "https://${_domain}"
+        -
+          _domain:
+            Fn::If:
+              - IsSetWebDomainName
+              - !Ref WebDomainName
+              - !GetAtt CloudfrontDistribution.DomainName
+    Description: "Website URL"
+
+  ContentsBucket:
+    Value: !Ref ContentsBucket
+    Description: "S3 bucket name for web contents"
+    Export:
+      Name: !Sub "${AWS::StackName}-ContentsBucket"
+
+  CloudFrontDistributionId:
+    Value: !Ref CloudfrontDistribution
+    Description: "CloudFront Distribution ID"
+    Export:
+      Name: !Sub "${AWS::StackName}-CloudFrontDistributionId"
+
+  CloudFrontDomainName:
+    Value: !GetAtt CloudfrontDistribution.DomainName
+    Description: "CloudFront Distribution Domain Name"

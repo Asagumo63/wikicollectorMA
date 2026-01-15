@@ -1,0 +1,30 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+  pre_build:
+    commands:
+      - echo "Installing dependencies - `pwd`"
+      - yarn install
+      - export GENERATE_SOURCEMAP=false
+      - export VITE_ENVIRONMENTNAME=$EnvironmentName
+      - export VITE_AWSREGION=$AwsRegion
+      - export VITE_USERPOOLID=$UserPoolId
+      - export VITE_USERPOOLWEBCLIENTID=$UserPoolWebClientId
+      - export VITE_IDENTITYPOOLID=$IdentityPoolId
+      - export VITE_GRAPHQLENDPOINT=$GraphQLEndpoint
+      - export VITE_OBJECT_BUCKET_NAME=$ObjectBucketName
+      - export VITE_WIKI_IMAGE_BUCKET_NAME=$WikiImageBucketName
+      - export VITE_CLOUDFRONT_URL=$CloudFrontUrl
+  build:
+    commands:
+      - yarn build
+artifacts:
+  base-directory: dist
+  files:
+    - '**/*'
+cache:
+  paths:
+    - 'node_modules/**/*'

@@ -1,0 +1,912 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  ComponentName: # コンポーネント名
+    Type: String
+    MinLength: 1
+  EnvironmentName: # 環境名 staging or production
+    Type: String
+    MinLength: 1
+  CognitoIdentityPoolRolesFunctionArn:
+    Type: String
+    Default: arn:aws:lambda:ap-northeast-1:540050305585:function:CognitoIdentityPoolRolesFunction
+  SystemMail: # システムメール
+    Type: String
+    MinLength: 1
+  Loglevel: # Pythonコードのログレベル
+    Type: String
+    MinLength: 1
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "basic configurations."
+        Parameters:
+          - ComponentName
+          - EnvironmentName
+      - Label:
+          default: "Application parameters"
+        Parameters:
+          - CognitoIdentityPoolRolesFunctionArn
+          - SystemMail
+          - Loglevel
+
+Resources:
+  # **********************************
+  # S3
+  #
+  # オブジェクト/ファイル保存用バケット
+  ObjectBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ComponentName}-object-${EnvironmentName}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - HEAD
+              - DELETE
+            AllowedOrigins:
+              - "*"
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: MoveToIntelligentTiering
+            Status: Enabled
+            Transitions:
+              - StorageClass: INTELLIGENT_TIERING
+                TransitionInDays: 0
+
+  # オブジェクトバケットのパブリックアクセスポリシーは削除 (website.yaml で OAC 経由の許可を設定)
+
+  # Wiki画像用プライベートバケット
+  WikiImageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ComponentName}-wiki-images-${EnvironmentName}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - HEAD
+              - DELETE
+            AllowedOrigins:
+              - "*"
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: MoveToIntelligentTiering
+            Status: Enabled
+            Transitions:
+              - StorageClass: INTELLIGENT_TIERING
+                TransitionInDays: 0
+
+  #
+  # S3
+  # **********************************
+
+  # **********************************
+  # DynamoDB
+  #
+  # Wiki記事テーブル
+  WikiArticlesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ComponentName}-WikiArticles-${EnvironmentName}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: articleId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: articleId
+          KeyType: RANGE
+      # 作成日時での検索用GSI (特定ユーザー内での検索)
+      GlobalSecondaryIndexes:
+        - IndexName: userId-createdAt-index
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  #
+  # DynamoDB
+  # **********************************
+
+
+  # **********************************
+  # AppSync
+  #
+  GraphQLApi:
+    Type: AWS::AppSync::GraphQLApi
+    Properties:
+      Name: !Sub "${ComponentName}-Api-${EnvironmentName}"
+      AuthenticationType: AMAZON_COGNITO_USER_POOLS # グループによる権限管理にするときは AWS_IAM にする
+      UserPoolConfig:
+        UserPoolId: !Ref UserPool
+        AwsRegion: !Ref AWS::Region
+        DefaultAction: ALLOW
+      # GraphQLApiEnableLoggingが設定されていたらLog設定する
+      LogConfig:
+        CloudWatchLogsRoleArn: !GetAtt GraphQLApiLoggingRole.Arn
+        FieldLogLevel: ERROR
+
+  GraphQLApiLoggingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action: "sts:AssumeRole"
+            Principal:
+              Service: "appsync.amazonaws.com"
+            Effect: Allow
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs
+
+  # AppSyncDatasourceの Lambda に対するRole
+  AppSyncLambdaDataSourceServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action: "sts:AssumeRole"
+            Principal:
+              Service: "appsync.amazonaws.com"
+            Effect: Allow
+      Policies:
+        - PolicyName: default
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - lambda:InvokeFunction
+                Effect: Allow
+                Resource:
+                  - !GetAtt ArticleManagerFunction.Arn
+                  - !GetAtt FulltextSearchFunction.Arn
+                  - !GetAtt ConsistencyCheckFunction.Arn
+                  - !GetAtt GetImageUploadUrlFunction.Arn
+
+  # AppSyncDatasourceの DynamoDB に対するRole
+  AppSyncDynamoDBDataSourceServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action: "sts:AssumeRole"
+            Principal:
+              Service: "appsync.amazonaws.com"
+            Effect: Allow
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - dynamodb:GetItem
+                Effect: Allow
+                Resource: !GetAtt WikiArticlesTable.Arn
+
+  # --------------------------------------------
+
+  # AppSyncのスキーマ定義
+  GraphQLSchema:
+    Type: AWS::AppSync::GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Definition:
+        !Sub |-
+          schema {
+            query: Query
+            mutation: Mutation
+          }
+
+          # Wiki記事型
+          type Article {
+            articleId: ID!
+            title: String!
+            content: String!
+            backupContent: String
+            createdAt: String!
+            updatedAt: String!
+          }
+
+          input CreateArticleInput {
+            title: String!
+            content: String!
+          }
+
+          input UpdateArticleInput {
+            title: String
+            content: String
+          }
+
+          type ArticleList {
+            items: [Article!]!
+            count: Int!
+          }
+
+          # Query
+          type Query {
+            getArticle(articleId: ID!): Article
+            listArticles: ArticleList!
+            searchArticles(query: String): ArticleList!
+          }
+
+          # Mutation
+          type Mutation {
+            createArticle(input: CreateArticleInput!): Article!
+            updateArticle(articleId: ID!, input: UpdateArticleInput!): Article!
+            deleteArticle(articleId: ID!): Boolean!
+            # 画像アップロードURL発行
+            getImageUploadUrl(fileName: String!, fileType: String!): ImageUploadUrl!
+          }
+
+          # 画像アップロードURL情報
+          type ImageUploadUrl {
+            uploadUrl: String!
+            objectKey: String!
+          }
+  ########
+  # DataSources START
+
+  # 記事管理用DataSource
+  ArticleManagerDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: ArticleManagerDataSource
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncLambdaDataSourceServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt ArticleManagerFunction.Arn
+
+  # 全文検索用DataSource
+  FulltextSearchDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: FulltextSearchDataSource
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncLambdaDataSourceServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt FulltextSearchFunction.Arn
+
+  # 画像アップロード用DataSource
+  ImageUploaderDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: ImageUploaderDataSource
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncLambdaDataSourceServiceRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt GetImageUploadUrlFunction.Arn
+
+  # Wiki記事DynamoDB DataSource (Lambdaレス用)
+  WikiArticlesDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: WikiArticlesDataSource
+      Type: AMAZON_DYNAMODB
+      ServiceRoleArn: !GetAtt AppSyncDynamoDBDataSourceServiceRole.Arn
+      DynamoDBConfig:
+        TableName: !Ref WikiArticlesTable
+        AwsRegion: !Ref AWS::Region
+
+  ########
+  # Resolvers START
+
+  # Wiki記事 - Query
+  GetArticleResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: getArticle
+      DataSourceName: !GetAtt WikiArticlesDataSource.Name
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      Code: |
+        import { util } from '@aws-appsync/utils';
+
+        export function request(ctx) {
+          const { articleId } = ctx.arguments;
+          const userId = ctx.identity.sub;
+          return {
+            operation: 'GetItem',
+            key: util.dynamodb.toMapValues({ userId, articleId }),
+          };
+        }
+
+        export function response(ctx) {
+          return ctx.result;
+        }
+
+  ListArticlesResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: listArticles
+      DataSourceName: !GetAtt ArticleManagerDataSource.Name
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      Code: |
+        export function request(ctx) {
+          return { operation: 'Invoke', payload: ctx };
+        }
+        export function response(ctx) {
+          return ctx.result;
+        }
+
+  SearchArticlesResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: searchArticles
+      DataSourceName: !GetAtt FulltextSearchDataSource.Name
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      Code: |
+        export function request(ctx) {
+          return { operation: 'Invoke', payload: ctx };
+        }
+        export function response(ctx) {
+          return ctx.result;
+        }
+
+  # Wiki記事 - Mutation
+  CreateArticleResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: createArticle
+      DataSourceName: !GetAtt ArticleManagerDataSource.Name
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      Code: |
+        export function request(ctx) {
+          return { operation: 'Invoke', payload: ctx };
+        }
+        export function response(ctx) {
+          return ctx.result;
+        }
+
+  UpdateArticleResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: updateArticle
+      DataSourceName: !GetAtt ArticleManagerDataSource.Name
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      Code: |
+        export function request(ctx) {
+          return { operation: 'Invoke', payload: ctx };
+        }
+        export function response(ctx) {
+          return ctx.result;
+        }
+
+  DeleteArticleResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: deleteArticle
+      DataSourceName: !GetAtt ArticleManagerDataSource.Name
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      Code: |
+        export function request(ctx) {
+          return { operation: 'Invoke', payload: ctx };
+        }
+        export function response(ctx) {
+          return ctx.result;
+        }
+
+  GetImageUploadUrlResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: getImageUploadUrl
+      DataSourceName: !GetAtt ImageUploaderDataSource.Name
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: 1.0.0
+      Code: |
+        export function request(ctx) {
+          return { operation: 'Invoke', payload: ctx };
+        }
+        export function response(ctx) {
+          return ctx.result;
+        }
+
+  # Queryのリゾルバ
+
+
+  #
+  # AppSync
+  # **********************************
+
+
+  # **********************************
+  # Lambda
+  #
+  # 記事管理Lambda (登録・更新・削除・取得)
+  ArticleManagerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ComponentName}-ArticleManager-${EnvironmentName}"
+      CodeUri: lambda/article_manager/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Timeout: 30
+      MemorySize: 256
+      Role: !GetAtt LambdaRole.Arn
+      Environment:
+        Variables:
+          WIKI_ARTICLES_TABLE_NAME: !Ref WikiArticlesTable
+          OBJECT_BUCKET_NAME: !Ref ObjectBucket
+          LOG_LEVEL: !Ref Loglevel
+
+  # 全文検索Lambda
+  FulltextSearchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ComponentName}-FulltextSearch-${EnvironmentName}"
+      CodeUri: lambda/fulltext_search/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Timeout: 30
+      MemorySize: 512
+      Role: !GetAtt LambdaRole.Arn
+      Environment:
+        Variables:
+          WIKI_ARTICLES_TABLE_NAME: !Ref WikiArticlesTable
+          OBJECT_BUCKET_NAME: !Ref ObjectBucket
+          LOG_LEVEL: !Ref Loglevel
+
+  # 整合性チェックLambda (定期実行)
+  ConsistencyCheckFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ComponentName}-ConsistencyCheck-${EnvironmentName}"
+      CodeUri: lambda/consistency_check/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Timeout: 60
+      MemorySize: 512
+      Role: !GetAtt LambdaRole.Arn
+      Environment:
+        Variables:
+          WIKI_ARTICLES_TABLE_NAME: !Ref WikiArticlesTable
+          OBJECT_BUCKET_NAME: !Ref ObjectBucket
+          LOG_LEVEL: !Ref Loglevel
+      Events:
+        WeeklyCheck:
+          Type: Schedule
+          Properties:
+            Schedule: "cron(0 0 ? * SUN *)" # 毎週日曜日 00:00 (UTC)
+            Name: !Sub "${ComponentName}-WeeklyConsistencyCheck-${EnvironmentName}"
+            Description: Weekly consistency check between DynamoDB and S3 index
+            Enabled: true
+
+  # 画像アップロードURL発行Lambda
+  GetImageUploadUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ComponentName}-GetImageUploadUrl-${EnvironmentName}"
+      CodeUri: lambda/image_uploader/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Timeout: 30
+      MemorySize: 256
+      Role: !GetAtt LambdaRole.Arn
+      Environment:
+        Variables:
+          WIKI_IMAGE_BUCKET_NAME: !Ref WikiImageBucket
+          LOG_LEVEL: !Ref Loglevel
+
+  #
+  # Lambda
+  # **********************************
+
+
+  # **********************************
+  # IAM
+  #
+  LambdaRole: # Lambda関数 : Lambda関数向けのロール
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ComponentName}-LambdaRole-${EnvironmentName}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      # Description: String
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        # - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+      Path: "/"
+      Policies:
+        - PolicyName: default
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # DynamoDBの権限
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt WikiArticlesTable.Arn
+                  - !Sub "${WikiArticlesTable.Arn}/index/*"
+              # S3の権限
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt ObjectBucket.Arn
+                  - !Sub "${ObjectBucket.Arn}/*"
+                  - !GetAtt WikiImageBucket.Arn
+                  - !Sub "${WikiImageBucket.Arn}/*"
+  #
+  # IAM
+  # **********************************
+
+  # **********************************
+  # Cognito
+  #
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${AWS::StackName}UserPool"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 6
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+        UnusedAccountValidityDays: 30
+        InviteMessageTemplate:
+          EmailSubject: "【wikicollector】仮パスワード発行"
+          EmailMessage: !Sub |-
+            <br>仮パスワードを発行しました。<br>
+            <br>
+            <br>
+            ■アカウント情報<br>
+            <br>
+            ユーザID： {username}<br>
+            仮パスワード： {####}<br>
+            <br>
+            仮パスワードでシステムにログイン後、新しいパスワードを設定してください。<br>
+            https://d1u0gi7tnzro2t.cloudfront.net/<br>
+            <br>
+            新しいパスワードは以下の条件を満たす必要があります。<br>
+            ・大文字、小文字を含む<br>
+            ・数字を含む<br>
+            ・記号を含む<br>
+            ・6文字以上<br>
+            <br>
+            【注意】<br>
+            仮パスワードの有効期限は発行日から30日間です。<br>
+            <br>
+            ※このメールは配信専用です。<br>
+            ※このメールアドレス宛に返信しないようにお願い致します。
+          SMSMessage: " ユーザーIDは {username}、仮パスワードは {####} です。"
+      SmsAuthenticationMessage: " 認証コードは {####} です。"
+      VerificationMessageTemplate:
+        EmailSubject: "【姓名判断システム】検証コード通知"
+        EmailMessage: !Sub |-
+          パスワード再設定用の検証コードをお知らせします。<br>
+          検証コード：{####}<br><br>
+          【注意】<BR>確認コードの有効期限は発行から1時間です。<br>
+          有効期限を過ぎた場合は、再度発行を実施してください。<br>
+          <br>
+          ※このメールは配信専用です。<br>
+          ※このメールアドレス宛に返信しないようにお願い致します。
+        SmsMessage: " 検証コードは {####} です。"
+        DefaultEmailOption: "CONFIRM_WITH_CODE"
+
+  # WebアプリとUserPool
+  UserPoolWebClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${AWS::StackName}-UserPool-WebClient"
+      GenerateSecret: false
+      RefreshTokenValidity: 1
+      UserPoolId: !Ref UserPool
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+  # IDプール
+  IdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      AllowUnauthenticatedIdentities: true
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolWebClient
+          # ProviderName: !Sub "cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+          ProviderName: !GetAtt UserPool.ProviderName
+  # CognitoIDentityに設定するRole（認証されているユーザのロール）
+  DefaultIdentityPoolRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: "cognito-identity.amazonaws.com" # cognito
+            Action: "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
+              "ForAnyValue:StringLike":
+                "cognito-identity.amazonaws.com:amr": "authenticated"
+      Policies:
+        - PolicyName: default
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - cognito-identity:GetId
+                Effect: Allow
+                Resource: !Sub "arn:aws:cognito-identity:*:*:identityPool/${IdentityPool}"
+              - Effect: Allow
+                Action: # AppSyncの権限
+                  - appsync:GraphQL
+                Resource:
+                  - !Sub "arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:apis/${GraphQLApi.ApiId}/types/*/fields/*"
+
+  # CognitoIDentityに設定するRole（認証されていないユーザのロール）
+  DefaultIdentityPoolUnauthenticatedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: "cognito-identity.amazonaws.com"
+            Action: "sts:AssumeRoleWithWebIdentity"
+            Condition: # 以下はAND条件 https://docs.aws.amazon.com/ja_jp/IAM/latest/UserGuide/reference_policies_multi-value-conditions.html
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
+              "ForAnyValue:StringLike":
+                "cognito-identity.amazonaws.com:amr": "unauthenticated"
+
+  # 管理者ユーザーグループ
+  ProductionLlm4FiledAdministrators:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: !Sub ${EnvironmentName}-${ComponentName}-Administrators
+      UserPoolId: !Ref UserPool
+  # 一般ユーザーグループ
+  ProductionLlm4FiledGeneralUsers:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: !Sub ${EnvironmentName}-${ComponentName}-GeneralUsers
+      UserPoolId: !Ref UserPool
+
+  # 管理者ユーザーRole
+  AdministratorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ComponentName}-AdministratorRole-${EnvironmentName}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: "cognito-identity.amazonaws.com"
+            Action: "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
+              "ForAnyValue:StringLike":
+                "cognito-identity.amazonaws.com:amr": "authenticated"
+      Policies:
+        - PolicyName: default
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action: # 認可(identityPool)機能にID取得を許可
+                  - cognito-identity:GetId
+                Effect: Allow
+                Resource: !Sub "arn:aws:cognito-identity:*:*:identityPool/${IdentityPool}"
+              - Effect: Allow # GraphQLの各API実行を許可
+                Action:
+                  - appsync:GraphQL
+                Resource:
+                  - !Sub "arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:apis/${GraphQLApi.ApiId}/types/*/fields/*"
+              - Effect: Allow # インデックスバケットへの読み取り権限
+                Action:
+                  - s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${ComponentName}-object-${EnvironmentName}/*"
+              - Effect: Allow # 画像バケットへの読み取り権限
+                Action:
+                  - s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${ComponentName}-wiki-images-${EnvironmentName}/*"
+
+  # 一般ユーザRole
+  GeneralUserRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ComponentName}-GeneralUserRole-${EnvironmentName}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: "cognito-identity.amazonaws.com"
+            Action: "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
+              "ForAnyValue:StringLike":
+                "cognito-identity.amazonaws.com:amr": "authenticated"
+      Policies:
+        - PolicyName: default
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action: # 認可(identityPool)機能にID取得を許可
+                  - cognito-identity:GetId
+                Effect: Allow
+                Resource: !Sub "arn:aws:cognito-identity:*:*:identityPool/${IdentityPool}"
+              - Effect: Allow
+                Action:
+                  - appsync:GraphQL
+                Resource:
+                  - !Sub "arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:apis/${GraphQLApi.ApiId}/types/*/fields/*"
+              - Effect: Allow # インデックスバケットへの読み取り権限
+                Action:
+                  - s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${ComponentName}-object-${EnvironmentName}/*"
+              - Effect: Allow # 画像バケットへの読み取り権限
+                Action:
+                  - s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${ComponentName}-wiki-images-${EnvironmentName}/*"
+
+  # IdentityPoolと各ロールの権限を紐づけ
+  IdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref IdentityPool
+      Roles:
+        authenticated: !GetAtt DefaultIdentityPoolRole.Arn
+        unauthenticated: !GetAtt DefaultIdentityPoolUnauthenticatedRole.Arn
+      RoleMappings:
+        "UserPool":
+          IdentityProvider: !Sub cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}:${UserPoolWebClient}
+          AmbiguousRoleResolution: Deny
+          Type: Rules
+          RulesConfiguration:
+            Rules:
+              - Claim: "cognito:groups"
+                MatchType: Contains
+                RoleARN: !GetAtt AdministratorRole.Arn
+                Value: !Sub ${EnvironmentName}-${ComponentName}-Administrators
+              - Claim: "cognito:groups"
+                MatchType: Contains
+                RoleARN: !GetAtt GeneralUserRole.Arn
+                Value: !Sub ${EnvironmentName}-${ComponentName}-GeneralUsers
+  #
+  # Cognito
+  # **********************************
+Outputs:
+  # Cognito情報
+  UserPoolId:
+    Value: !Ref UserPool
+    Description: Cognito UserPool ID
+  UserPoolWebClientId:
+    Value: !Ref UserPoolWebClient
+    Description: Cognito UserPool Web Client ID
+  IdentityPoolId:
+    Value: !Ref IdentityPool
+    Description: Cognito Identity Pool ID
+
+  # AppSync情報
+  GraphQLApiId:
+    Value: !GetAtt GraphQLApi.ApiId
+    Description: AppSync GraphQL API ID
+  GraphQLApiUrl:
+    Value: !GetAtt GraphQLApi.GraphQLUrl
+    Description: AppSync GraphQL API URL
+  GraphQLApiArn:
+    Value: !GetAtt GraphQLApi.Arn
+    Description: AppSync GraphQL API ARN
+
+  # S3バケット情報
+  ObjectBucketName:
+    Value: !Ref ObjectBucket
+    Description: Object storage bucket name
+  ObjectBucketUrl:
+    Value: !Sub "https://${ObjectBucket}.s3.${AWS::Region}.amazonaws.com"
+    Description: Object storage bucket URL
+
+  # DynamoDBテーブル名
+  WikiArticlesTableName:
+    Value: !Ref WikiArticlesTable
+    Description: Wiki articles table name
+
+  # Lambda関数ARN
+  ArticleManagerFunctionArn:
+    Value: !GetAtt ArticleManagerFunction.Arn
+    Description: Article manager Lambda function ARN
+
+  FulltextSearchFunctionArn:
+    Value: !GetAtt FulltextSearchFunction.Arn
+    Description: Fulltext search Lambda function ARN
+
+  ConsistencyCheckFunctionArn:
+    Value: !GetAtt ConsistencyCheckFunction.Arn
+    Description: Consistency check Lambda function ARN
+
+  WikiImageBucketName:
+    Value: !Ref WikiImageBucket
+    Description: Wiki image storage bucket name
+    Export:
+      Name: !Sub "${AWS::StackName}-WikiImageBucketName"

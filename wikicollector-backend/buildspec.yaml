@@ -1,0 +1,25 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.14
+    commands:
+      - pip install --upgrade --user awscli
+      - aws --version
+      - sam --version
+  pre_build:
+    commands:
+      - echo "Installing dependencies - `pwd`"
+  build:
+    commands:
+      - echo "Starting build `date` in `pwd`"
+      - sam build --template-file app-sam.yaml
+      - sam package --template-file .aws-sam/build/template.yaml --s3-bucket $BUILD_OUTPUT_BUCKET --output-template-file app-output_sam.yaml
+  post_build:
+    commands:
+      - echo "build completed on `date`"
+artifacts:
+  files:
+    - app-output_sam.yaml
+  discard-paths: yes
