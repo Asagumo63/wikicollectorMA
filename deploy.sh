@@ -89,6 +89,7 @@ echo "[4/5] Building Frontend (React)..."
 
 # 古いビルド成果物とキャッシュを削除して確実にクリーンビルド
 rm -f wikicollector-frontend/.env
+rm -f wikicollector-frontend/.env.local
 rm -rf wikicollector-frontend/dist
 rm -rf wikicollector-frontend/node_modules/.vite
 

@@ -37,9 +37,6 @@ export const LoginPage: React.FC = () => {
       throw new Error('このアプリを利用する権限がありません。管理者に問い合わせてください。');
     }
 
-    // 署名付きクッキーの発行を試行
-    await AuthService.issueSignedCookies();
-
     const user = await AuthService.getCurrentUser();
     setAuth({
       user,

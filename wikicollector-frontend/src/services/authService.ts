@@ -55,22 +55,4 @@ export class AuthService {
     const result = await confirmSignIn({ challengeResponse: newPassword });
     return result;
   }
-
-  /**
-   * CloudFront署名付きクッキーを発行する
-   */
-  static async issueSignedCookies(): Promise<boolean> {
-    try {
-      // CloudFront経由でLambda Function URLを叩く
-      // 同じドメイン上のパスなので、ブラウザにSet-Cookieされる
-      const response = await fetch('/api/cookies', {
-        method: 'GET',
-        credentials: 'include',
-      });
-      return response.ok;
-    } catch (error) {
-      console.error('[AuthService] issueSignedCookies error:', error);
-      return false;
-    }
-  }
 }
