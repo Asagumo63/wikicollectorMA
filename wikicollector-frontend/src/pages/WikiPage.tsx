@@ -326,7 +326,8 @@ const SafeImage = ({ src, ...props }: React.ImgHTMLAttributes<HTMLImageElement>)
 
   useEffect(() => {
     const fetchUrl = async () => {
-      if (src && src.startsWith('/images/')) {
+      // /users/{userId}/images/ 形式のパスを署名付きURLに変換
+      if (src && src.startsWith('/users/') && src.includes('/images/')) {
         const url = await WikiService.getPictureUrl(src);
         setImageUrl(url);
       } else {
