@@ -153,7 +153,16 @@ export const Sidebar: React.FC = () => {
             onContextMenu={(e) => handleContextMenu(e, node.path)}
           >
             {node.type === 'folder' ? (
-              <FolderIcon sx={{ mr: 1, color: 'primary.main' }} fontSize="small" />
+              node.articleId ? (
+                <Tooltip title="フォルダ兼記事" arrow>
+                  <FolderIcon
+                    sx={{ mr: 1, color: 'warning.main' }}
+                    fontSize="small"
+                  />
+                </Tooltip>
+              ) : (
+                <FolderIcon sx={{ mr: 1, color: 'primary.main' }} fontSize="small" />
+              )
             ) : (
               <InsertDriveFileIcon sx={{ mr: 1, color: 'action.active' }} fontSize="small" />
             )}
@@ -162,8 +171,12 @@ export const Sidebar: React.FC = () => {
             </Typography>
           </Box>
         }
-        onClick={() => {
-          if (node.type === 'file' && node.articleId) {
+        onClick={(e) => {
+          // イベントの伝播を停止（親ノードへのバブリングを防ぐ）
+          e.stopPropagation();
+          // articleIdがあれば記事に遷移（フォルダ兼記事の場合も対応）
+          // フォルダの展開/折りたたみはSimpleTreeViewが自動で処理する
+          if (node.articleId) {
             navigate(`/wiki/${node.articleId}`);
           }
         }}

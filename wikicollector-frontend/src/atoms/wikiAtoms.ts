@@ -27,6 +27,17 @@ export const wikiTreeAtom = atom<WikiNode[]>((get) => {
           children: [],
         };
         currentLevel.push(node);
+      } else if (isLast) {
+        // 既存のフォルダノードに記事情報を追加（フォルダ兼記事として扱う）
+        node.articleId = article.articleId;
+        // idもarticleIdに変更して選択状態が正しく機能するようにする
+        node.id = article.articleId;
+      } else {
+        // 既存のファイルノードに子要素が追加される場合、typeをfolderに変更
+        // （例：user1という記事がある状態でuser1/testという記事が追加された場合）
+        if (node.type === 'file') {
+          node.type = 'folder';
+        }
       }
 
       currentLevel = node.children;
@@ -65,9 +76,16 @@ export const expandedItemIdsAtom = atom<string[]>((get) => {
   const expanded: string[] = [];
 
   // 最後の要素以外（親フォルダ）をすべて展開対象にする
+  // フォルダ兼記事の場合はarticleIdがIDになっているため、両方のパターンを追加
   for (let i = 1; i < parts.length; i++) {
     const path = parts.slice(0, i).join('/');
+    // 通常のフォルダID
     expanded.push(`folder-${path}`);
+    // フォルダ兼記事の場合、そのパスに対応する記事のarticleIdを探す
+    const folderArticle = articles.find((a) => a.title === path);
+    if (folderArticle) {
+      expanded.push(folderArticle.articleId);
+    }
   }
 
   return expanded;

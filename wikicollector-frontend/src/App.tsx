@@ -8,6 +8,7 @@ import { LoginPage } from './pages/LoginPage';
 import { MainLayout } from './components/layout/MainLayout';
 import { WikiPage } from './pages/WikiPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { MermaidViewPage } from './pages/MermaidViewPage';
 
 function App() {
   const themeMode = useAtomValue(themeModeAtom);
@@ -60,6 +61,7 @@ function App() {
                 </MainLayout>
               }
             />
+            <Route path="/mermaid-view" element={<MermaidViewPage />} />
           </Route>
         </Routes>
       </Router>
