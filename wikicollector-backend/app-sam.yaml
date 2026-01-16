@@ -785,10 +785,18 @@ Resources:
                 Action:
                   - s3:GetObject
                 Resource: !Sub "arn:aws:s3:::${ComponentName}-object-${EnvironmentName}/*"
+              - Effect: Allow # インデックスバケットのリスト権限
+                Action:
+                  - s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::${ComponentName}-object-${EnvironmentName}"
               - Effect: Allow # 画像バケットへの読み取り権限
                 Action:
                   - s3:GetObject
                 Resource: !Sub "arn:aws:s3:::${ComponentName}-wiki-images-${EnvironmentName}/*"
+              - Effect: Allow # 画像バケットのリスト権限
+                Action:
+                  - s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::${ComponentName}-wiki-images-${EnvironmentName}"
 
   # 一般ユーザRole
   GeneralUserRole:
@@ -825,10 +833,18 @@ Resources:
                 Action:
                   - s3:GetObject
                 Resource: !Sub "arn:aws:s3:::${ComponentName}-object-${EnvironmentName}/*"
+              - Effect: Allow # インデックスバケットのリスト権限
+                Action:
+                  - s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::${ComponentName}-object-${EnvironmentName}"
               - Effect: Allow # 画像バケットへの読み取り権限
                 Action:
                   - s3:GetObject
                 Resource: !Sub "arn:aws:s3:::${ComponentName}-wiki-images-${EnvironmentName}/*"
+              - Effect: Allow # 画像バケットのリスト権限
+                Action:
+                  - s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::${ComponentName}-wiki-images-${EnvironmentName}"
 
   # IdentityPoolと各ロールの権限を紐づけ
   IdentityPoolRoleAttachment:
