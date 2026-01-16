@@ -22,6 +22,7 @@ export class AuthService {
       const user = await getCurrentUser();
       return {
         username: user.username,
+        userId: user.userId, // Cognito sub (UUID)
         attributes: user as unknown as Record<string, unknown>,
       };
     } catch (error) {

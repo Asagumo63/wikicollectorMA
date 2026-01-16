@@ -99,7 +99,7 @@ export class WikiService {
   static async listArticles(): Promise<Article[]> {
     try {
       const user = await AuthService.getCurrentUser();
-      const userId = user?.username; // Cognito sub
+      const userId = user?.userId; // Cognito sub (UUID)
 
       if (userId) {
         // 1. Amplify Storage を使用してユーザー個別の S3 インデックスを取得試行

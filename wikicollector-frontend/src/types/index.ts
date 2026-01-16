@@ -1,5 +1,6 @@
 export interface User {
   username: string;
+  userId: string; // Cognito sub (UUID)
   attributes?: Record<string, unknown>;
 }
 
