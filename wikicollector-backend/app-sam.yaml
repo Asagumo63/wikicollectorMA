@@ -781,22 +781,30 @@ Resources:
                   - appsync:GraphQL
                 Resource:
                   - !Sub "arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:apis/${GraphQLApi.ApiId}/types/*/fields/*"
-              - Effect: Allow # インデックスバケットへの読み取り権限
+              - Effect: Allow # インデックスバケットへの読み取り権限（自分のフォルダのみ）
                 Action:
                   - s3:GetObject
-                Resource: !Sub "arn:aws:s3:::${ComponentName}-object-${EnvironmentName}/*"
-              - Effect: Allow # インデックスバケットのリスト権限
+                Resource: !Sub "arn:aws:s3:::${ComponentName}-object-${EnvironmentName}/users/${!cognito-identity.amazonaws.com:sub}/*"
+              - Effect: Allow # インデックスバケットのリスト権限（自分のフォルダのみ）
                 Action:
                   - s3:ListBucket
                 Resource: !Sub "arn:aws:s3:::${ComponentName}-object-${EnvironmentName}"
-              - Effect: Allow # 画像バケットへの読み取り権限
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - "users/${cognito-identity.amazonaws.com:sub}/*"
+              - Effect: Allow # 画像バケットへの読み取り権限（自分のフォルダのみ）
                 Action:
                   - s3:GetObject
-                Resource: !Sub "arn:aws:s3:::${ComponentName}-wiki-images-${EnvironmentName}/*"
-              - Effect: Allow # 画像バケットのリスト権限
+                Resource: !Sub "arn:aws:s3:::${ComponentName}-wiki-images-${EnvironmentName}/users/${!cognito-identity.amazonaws.com:sub}/*"
+              - Effect: Allow # 画像バケットのリスト権限（自分のフォルダのみ）
                 Action:
                   - s3:ListBucket
                 Resource: !Sub "arn:aws:s3:::${ComponentName}-wiki-images-${EnvironmentName}"
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - "users/${cognito-identity.amazonaws.com:sub}/*"
 
   # 一般ユーザRole
   GeneralUserRole:
@@ -829,22 +837,30 @@ Resources:
                   - appsync:GraphQL
                 Resource:
                   - !Sub "arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:apis/${GraphQLApi.ApiId}/types/*/fields/*"
-              - Effect: Allow # インデックスバケットへの読み取り権限
+              - Effect: Allow # インデックスバケットへの読み取り権限（自分のフォルダのみ）
                 Action:
                   - s3:GetObject
-                Resource: !Sub "arn:aws:s3:::${ComponentName}-object-${EnvironmentName}/*"
-              - Effect: Allow # インデックスバケットのリスト権限
+                Resource: !Sub "arn:aws:s3:::${ComponentName}-object-${EnvironmentName}/users/${!cognito-identity.amazonaws.com:sub}/*"
+              - Effect: Allow # インデックスバケットのリスト権限（自分のフォルダのみ）
                 Action:
                   - s3:ListBucket
                 Resource: !Sub "arn:aws:s3:::${ComponentName}-object-${EnvironmentName}"
-              - Effect: Allow # 画像バケットへの読み取り権限
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - "users/${cognito-identity.amazonaws.com:sub}/*"
+              - Effect: Allow # 画像バケットへの読み取り権限（自分のフォルダのみ）
                 Action:
                   - s3:GetObject
-                Resource: !Sub "arn:aws:s3:::${ComponentName}-wiki-images-${EnvironmentName}/*"
-              - Effect: Allow # 画像バケットのリスト権限
+                Resource: !Sub "arn:aws:s3:::${ComponentName}-wiki-images-${EnvironmentName}/users/${!cognito-identity.amazonaws.com:sub}/*"
+              - Effect: Allow # 画像バケットのリスト権限（自分のフォルダのみ）
                 Action:
                   - s3:ListBucket
                 Resource: !Sub "arn:aws:s3:::${ComponentName}-wiki-images-${EnvironmentName}"
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - "users/${cognito-identity.amazonaws.com:sub}/*"
 
   # IdentityPoolと各ロールの権限を紐づけ
   IdentityPoolRoleAttachment:
