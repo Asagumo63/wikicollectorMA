@@ -14,15 +14,17 @@ logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
 def get_s3_client():
     """
     S3クライアントを取得する
-    リージョンと署名バージョンを明示的に指定して、
-    presigned URLが正しいリージョナルエンドポイントを使用するようにする
+    リージョナルエンドポイントを明示的に指定して、
+    presigned URLがCORSに対応した正しいエンドポイントを使用するようにする
 
     Returns:
         botocore.client.S3: S3クライアント
     """
     region = os.environ.get('AWS_REGION', 'ap-northeast-1')
+    # リージョナルエンドポイントを明示的に指定（CORSエラー回避のため必須）
+    endpoint_url = f"https://s3.{region}.amazonaws.com"
     config = Config(signature_version='s3v4')
-    return boto3.client('s3', region_name=region, config=config)
+    return boto3.client('s3', region_name=region, endpoint_url=endpoint_url, config=config)
 
 def lambda_handler(event, context):
     """
