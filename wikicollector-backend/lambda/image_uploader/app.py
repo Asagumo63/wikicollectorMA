@@ -2,6 +2,7 @@ import json
 import os
 import uuid
 import boto3
+from botocore.config import Config
 import logging
 from datetime import datetime
 
@@ -13,11 +14,15 @@ logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
 def get_s3_client():
     """
     S3クライアントを取得する
+    リージョンと署名バージョンを明示的に指定して、
+    presigned URLが正しいリージョナルエンドポイントを使用するようにする
 
     Returns:
         botocore.client.S3: S3クライアント
     """
-    return boto3.client('s3')
+    region = os.environ.get('AWS_REGION', 'ap-northeast-1')
+    config = Config(signature_version='s3v4')
+    return boto3.client('s3', region_name=region, config=config)
 
 def lambda_handler(event, context):
     """
