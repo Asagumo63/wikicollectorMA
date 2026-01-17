@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-amplify/ui-react": "^6.3.3",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.7",
@@ -17,9 +18,10 @@
     "@mui/x-tree-view": "^8.24.0",
     "@types/prismjs": "^1.26.5",
     "@types/react-syntax-highlighter": "^15.5.13",
-    "@aws-amplify/ui-react": "^6.3.3",
     "aws-amplify": "^6.15.9",
+    "file-saver": "^2.0.5",
     "jotai": "^2.16.1",
+    "jszip": "^3.10.1",
     "mermaid": "^11.12.2",
     "prismjs": "^1.30.0",
     "react": "^19.2.0",
@@ -33,6 +35,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@types/file-saver": "^2.0.7",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",

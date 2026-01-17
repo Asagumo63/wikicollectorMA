@@ -257,4 +257,42 @@ export class WikiService {
       return '';
     }
   }
+
+  /**
+   * 検索用インデックス(content含む)を取得する
+   * フロントエンドでの高度な検索のために使用
+   * @returns content含む記事一覧
+   */
+  static async loadSearchIndex(): Promise<Article[]> {
+    try {
+      const user = await AuthService.getCurrentUser();
+      const userId = user?.userId; // Cognito sub (UUID)
+
+      if (userId) {
+        // 1. S3から users/{userId}/search_index.json を取得試行
+        try {
+          const result = await downloadData({
+            path: `users/${userId}/search_index.json`,
+          }).result;
+          const text = await result.body.text();
+          return JSON.parse(text);
+        } catch (e) {
+          console.warn(
+            'Failed to fetch search_index.json via Amplify Storage, falling back to GraphQL:',
+            e
+          );
+        }
+      }
+
+      // 2. フォールバック: GraphQL経由で空クエリで全記事取得
+      const response = (await getClient().graphql({
+        query: searchArticlesQuery,
+        variables: { query: '' },
+      })) as any;
+      return response.data.searchArticles.items;
+    } catch (error) {
+      console.error('Error loading search index:', error);
+      throw error;
+    }
+  }
 }

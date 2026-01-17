@@ -31,6 +31,7 @@ import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate } from 'react-router-dom';
 import { AuthService } from '../../services/authService';
+import { ExportButton } from '../common/ExportButton';
 
 const drawerWidthDefault = 300;
 const minDrawerWidth = 200;
@@ -246,6 +247,7 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
               <Typography variant="body2" sx={{ mr: 2, display: { xs: 'none', sm: 'block' } }}>
                 ログイン中: {auth.user.username || (auth.user.attributes?.email as string) || ''}
               </Typography>
+              <ExportButton variant="icon" />
               <IconButton
                 color="inherit"
                 onClick={() => navigate('/settings')}

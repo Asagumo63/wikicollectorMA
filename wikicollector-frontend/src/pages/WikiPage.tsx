@@ -128,6 +128,8 @@ const MarkdownWrapper = styled(Box, {
 // コピーボタンコンポーネント
 const CopyButton: React.FC<{ text: string }> = ({ text }) => {
   const [copied, setCopied] = useState(false);
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(text);
@@ -145,12 +147,13 @@ const CopyButton: React.FC<{ text: string }> = ({ text }) => {
           position: 'absolute',
           top: 8,
           right: 8,
-          backgroundColor: 'rgba(255, 255, 255, 0.8)',
+          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.06)',
+          color: isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
           opacity: 0,
-          transition: 'opacity 0.2s',
+          transition: 'opacity 0.2s, background-color 0.2s',
           zIndex: 1,
           '&:hover': {
-            backgroundColor: '#fff',
+            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
           },
         }}
       >
@@ -376,6 +379,9 @@ export const WikiPage: React.FC<{ isEditRoute?: boolean; isNewRoute?: boolean }>
   const [mobileTocOpen, setMobileTocOpen] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
 
+  // 本文入力欄への参照
+  const contentInputRef = React.useRef<HTMLTextAreaElement>(null);
+
   const handleFileUpload = async (file: File) => {
     if (!file.type.startsWith('image/')) return;
 
@@ -407,6 +413,32 @@ export const WikiPage: React.FC<{ isEditRoute?: boolean; isNewRoute?: boolean }>
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
+
+    // Wiki記事のドロップを処理
+    const wikiData = e.dataTransfer.getData('application/wiki-article');
+    if (wikiData) {
+      try {
+        const { articleId: droppedArticleId, title: droppedTitle } = JSON.parse(wikiData);
+        const linkText = `[${droppedTitle}](/wiki/${droppedArticleId})`;
+
+        // DOM経由でテキストを挿入することでUndo履歴を保持
+        if (contentInputRef.current) {
+          const textarea = contentInputRef.current;
+          textarea.focus();
+
+          // document.execCommandを使ってUndo履歴を保持
+          document.execCommand('insertText', false, linkText);
+
+          // ReactのstateをDOMの値で同期
+          setContent(textarea.value);
+        }
+      } catch (error) {
+        console.error('Failed to parse wiki article data:', error);
+      }
+      return;
+    }
+
+    // 画像ファイルのドロップを処理
     const files = e.dataTransfer.files;
     for (let i = 0; i < files.length; i++) {
       if (files[i].type.startsWith('image/')) {
@@ -645,6 +677,8 @@ export const WikiPage: React.FC<{ isEditRoute?: boolean; isNewRoute?: boolean }>
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
+            inputRef={contentInputRef}
             sx={{ mb: 4 }}
           />
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
